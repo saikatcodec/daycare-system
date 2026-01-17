@@ -1,6 +1,7 @@
 from ultralytics import YOLO
 
 class ChildModel:
+    """YOLO-based child detector/tracker wrapper."""
     def __init__(self, model_path, conf=.6):
         """Initialize the YOLO-based child detector/tracker.
 
