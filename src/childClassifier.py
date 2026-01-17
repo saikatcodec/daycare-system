@@ -35,6 +35,7 @@ class ChildModel:
             tracker='botsort.yaml',
             save=False,
             conf=self.conf,
+            persist=True,
             classes=[1]
         )[0]
 
