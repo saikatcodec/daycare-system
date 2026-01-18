@@ -46,31 +46,38 @@ class SystemPipeline:
                     break
 
                 count = 0
-                frame_info = []
+                frame_infos = []
 
                 # Retrieve child info from the frame
                 childs = self.childModel.child_track(frame)
                 for child in childs:
-                    info = {}
                     [track_id, cls, conf, bbox] = child
-                    info[track_id] = {}
+                    info = {track_id: {
+                        'f_result': [],
+                        'f_bbox': [],
+                        'b_result': [],
+                        'b_bbox': []
+                    }}
+
                     # Filter the child from the frame
                     image_child = Utils.crop_image(frame, bbox=bbox)
                     
                     # Detect the fall
                     fall_results = self.fallDetection.detect_fall(image_child)
                     for r in fall_results:
-                        info[track_id]['f_result'] = r[0]
-                        info[track_id]['f_bbox'] = r[1]
+                        info[track_id]['f_result'].append(r[0])
+                        info[track_id]['f_bbox'].append(r[1])
 
                     # Behavior analysis
                     behavioral_results = self.behaviorModel.detect_behavior(image_child)
                     for r in behavioral_results:
-                        info[track_id]['b_result'] = self.behaviorModel.get_names()[int(r[0])]
-                        info[track_id]['b_bbox'] = r[2]
+                        info[track_id]['b_result'].append(self.behaviorModel.get_names()[int(r[0])])
+                        info[track_id]['b_bbox'].append(r[2])
 
-                    frame_info.append(info)
-                ## TODO: update the frame
+                    frame_infos.append(info)
+                for info in frame_infos:
+                    pass
+                    ## TODO: update the frame
 
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
