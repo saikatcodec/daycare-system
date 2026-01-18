@@ -101,7 +101,7 @@ class FallDetect:
         ratio = height / (width + 1e-6)
         return ratio
 
-    def detect_fall(self, image_path):
+    def detect_fall(self, image):
         """Detect whether each detected person in an image is fallen.
 
         For each detected person, this method builds a feature vector from:
@@ -110,14 +110,14 @@ class FallDetect:
         - Mean of all keypoint y-values (nose-relative)
 
         Args:
-            image_path: Path to an image (or a source supported by
+            image: Path to an image (or a source supported by
                 Ultralytics' `YOLO.predict`).
 
         Returns:
             list[tuple(str, bbox)]: One label per detected person, each either `'fallen'` or
-            `'not fallen'` and bounding box according to the image.
+            `'not-fallen'` and bounding box according to the image.
         """
-        keypoints, bboxes = self.__get_points(image_path)
+        keypoints, bboxes = self.__get_points(image)
 
         inference = []
         for points, bbox in zip(keypoints, bboxes):
@@ -145,8 +145,7 @@ class FallDetect:
             prediction = self.svm.predict(scaled_features) # Predict using SVC
             
             if prediction[0] == 0:
-                inference.append(('not fallen', bbox))
+                inference.append(('not-fallen', bbox))
             else:
                 inference.append(('fallen', bbox))
         return inference
-

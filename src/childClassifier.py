@@ -51,3 +51,11 @@ class ChildModel:
                 detections.append(list([int(id), int(cl), float(conf), xyxy.tolist()]))
 
         return detections
+
+    def get_names(self):
+        """Return the model's class-name labels.
+
+        Returns:
+            list[str]: Class names indexed by class id (i.e., ``names[class_id]``).
+        """
+        return list(self.model.names.values())
