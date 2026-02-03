@@ -18,6 +18,15 @@ class Utils:
     
     @staticmethod
     def draw_bounding_box(image: MatLike, name: str, bbox: list, color: tuple[int, int, int]) -> MatLike:
+        # Draw a bounding box for the prediction
+        cv2.rectangle(
+            image,
+            (int(bbox[0]), int(bbox[1])),
+            (int(bbox[2]), int(bbox[3])),
+            color=color,
+            thickness=2
+        )
+        
         # Constant
         FONT_FACE = cv2.FONT_HERSHEY_PLAIN
         FONT_SCALE = 1.0
@@ -31,7 +40,7 @@ class Utils:
         )
         # Calculate the box position based on text size
         text_box_min = int(bbox[0]), int(bbox[1])
-        text_box_max = int(bbox[0] + text_width), int(bbox[1] + text_height)
+        text_box_max = int(bbox[0] + text_width + baseline), int(bbox[1] + text_height + baseline)
         # Draw a rectangle according to the text size
         cv2.rectangle(
             image,
@@ -42,7 +51,7 @@ class Utils:
         )
         # Put text into the box
         text_x = int(text_box_min[0] + baseline // 2)
-        text_y = int(text_box_max[1] - baseline)
+        text_y = int(text_box_max[1] - baseline // 2)
         cv2.putText(
             image,
             name,
@@ -51,15 +60,6 @@ class Utils:
             fontScale=FONT_SCALE,
             thickness=THICKNESS,
             color=(255, 255, 255)
-        )
-
-        # Draw a bounding box for the prediction
-        cv2.rectangle(
-            image,
-            (int(bbox[0]), int(bbox[1])),
-            (int(bbox[2]), int(bbox[3])),
-            color=color,
-            thickness=2
         )
 
         return image
