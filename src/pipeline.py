@@ -88,6 +88,7 @@ class SystemPipeline:
                     info['f_bbox'],
                     color=(24, 31, 230) # In BGR mode
                 )
+                logger.info('Draw a bounding box for the fall detection')
 
             if info.get('b_result', None):
                 # Draw the bbox
@@ -97,7 +98,7 @@ class SystemPipeline:
                     info['b_bbox'],
                     color=(244, 31, 20) # In BGR mode
                 )
-            
+                logger.info('Draw a bounding box for behavior analysis')
             #  Otherwise draw the bounding box for children
             else:
                 frame = Utils.draw_bounding_box(
@@ -106,6 +107,7 @@ class SystemPipeline:
                     info['child_bbox'],
                     color=(112, 0, 94) # In BGR mode
                 )
+                logger.info('Child detection box added')
 
         return frame
 
