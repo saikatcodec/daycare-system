@@ -23,7 +23,7 @@ class SystemPipeline:
             self.video = cv2.VideoCapture(0)
             logger.info('Video are feed from real time camera')
         
-        # Raise an erros
+        # Raise an errors
         if not self.video.isOpened():
             raise ValueError('Error: Could not open video file.')
         
@@ -33,14 +33,15 @@ class SystemPipeline:
 
         # Fall detection instance
         self.fallDetection = FallDetect(self.fall_detect_path)
-        logger.info('Falll Detection model is getting loaded')
+        logger.info('Fall Detection model is getting loaded')
 
-        # Behavioral anaylysis model instance
+        # Behavioral analysis model instance
         self.behaviorModel = BehaviorAnalysisModel(self.behavior_model_path, conf=0.8)
         logger.info('Behavioral Model is loaded')
 
     def start(self):
-        skip_frame = 5, count = 0
+        skip_frame = 5
+        count = 0
 
         # Extract frame after every 5 frames
         while True:
@@ -58,14 +59,15 @@ class SystemPipeline:
                     break
 
                 count = 0
-                frame_infos = {}
+                frame_infos: dict[int, dict] = {} # To store the frame info
 
                 # Retrieve child info from the frame
-                childs = self.childModel.child_track(frame)
+                children = self.childModel.child_track(frame)
                 logger.info('Children are detected')
-                for child in childs:
+                for child in children:
                     [track_id, cls, conf, bbox] = child
                     info = {
+                        'child_bbox': bbox,
                         'f_result': [],
                         'f_bbox': [],
                         'b_result': [],
@@ -93,8 +95,16 @@ class SystemPipeline:
                     frame_infos[track_id] = info
                     logger.info('Added the frame info to the dict')
 
-                for info in frame_infos:
-                    ## TODO: update the frame
+                for track_id, info in frame_infos.items():
+                    # TODO: If fall or behavior detect draw bounding box with them
+                    if info['f_result']:
+                        # Draw bbox
+                        pass
+
+                    if info['b_result']:
+                        # Draw the bbox
+                        pass
+                    # TODO: Otherwise draw the bounding box for children
                     pass
 
 

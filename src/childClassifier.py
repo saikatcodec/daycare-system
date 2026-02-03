@@ -36,7 +36,7 @@ class ChildModel:
             save=False,
             conf=self.conf,
             persist=True,
-            classes=[1]
+            classes=[1] # Only detect children
         )[0]
 
         boxes = results.boxes.cpu()

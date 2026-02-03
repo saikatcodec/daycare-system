@@ -84,7 +84,7 @@ class FallDetect:
 
         return angles, ratio
     
-    def __bouding_box_ratio(self, p1, p2):
+    def __bounding_box_ratio(self, p1, p2):
         """Compute bounding-box height/width ratio.
 
         Args:
@@ -138,7 +138,7 @@ class FallDetect:
             mean = np.mean(all_y) # Calculate mean of all points
 
             angle_body = np.array(self.__body_orient(left_shoulder, right_shoulder, left_hip, right_hip))
-            bbox_ratio = self.__bouding_box_ratio(bbox_p1, bbox_p2)
+            bbox_ratio = self.__bounding_box_ratio(bbox_p1, bbox_p2)
             features = np.append(angle_body, [bbox_ratio, mean]).reshape(1, -1) # Resize with 2D array
             
             scaled_features = self.scaler.transform(features)
