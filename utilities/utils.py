@@ -13,7 +13,19 @@ class Utils:
         Return:
             Cropped OpenCV image
         """
-        [x1, y1, x2, y2] = bbox
+        height, width = image.shape[:2]
+
+        # YOLO-style boxes are often float; convert and clamp to valid image bounds.
+        x1, y1, x2, y2 = [int(round(v)) for v in bbox]
+        x1 = max(0, min(x1, width - 1))
+        y1 = max(0, min(y1, height - 1))
+        x2 = max(0, min(x2, width))
+        y2 = max(0, min(y2, height))
+
+        # Fallback to the full frame if the crop is invalid after clamping.
+        if x2 <= x1 or y2 <= y1:
+            return image
+
         return image[y1:y2, x1:x2]
     
     @staticmethod
