@@ -1,151 +1,188 @@
-from ultralytics import YOLO
+"""Fall detection via YOLOv11-pose keypoints and an SVM classifier."""
+
+from __future__ import annotations
+
 import pickle
+from pathlib import Path
+from typing import NamedTuple
+
 import numpy as np
+from ultralytics import YOLO
+
+from utilities.logger import get_logger
+
+logger = get_logger(__name__)
+
+# COCO keypoint indices used in feature extraction
+_KP_LEFT_SHOULDER  = 5
+_KP_RIGHT_SHOULDER = 6
+_KP_LEFT_HIP       = 11
+_KP_RIGHT_HIP      = 12
+
+# Fallback pose-model path (can be overridden via constructor)
+_DEFAULT_POSE_MODEL = "models/yolo11m-pose.pt"
+_DEFAULT_SCALER     = "models/scaler_v1.2.1.pkl"
+
+
+class FallResult(NamedTuple):
+    """Structured result for a single detected person."""
+    label: str          # 'fallen' | 'not-fallen'
+    bbox: list[int]     # [x1, y1, x2, y2] in pixel coordinates
+    confidence: float   # placeholder – SVM hard predictions = 1.0
+
 
 class FallDetect:
-    """Fall detection using YOLO pose keypoints + an SVM classifier.
+    """Fall detector combining YOLOv11-pose estimation with an SVM classifier.
 
-    The pipeline is:
-    1) Run pose inference to get keypoints + bounding boxes.
-    2) Build a small, hand-crafted feature vector from keypoints/box.
-    3) Standardize features with a saved scaler.
-    4) Classify with a saved SVM to predict fall vs not-fall.
+    Pipeline
+    --------
+    1. Run pose inference → 17 COCO keypoints + bounding boxes.
+    2. Normalize keypoints relative to the nose landmark.
+    3. Compute a 4-D feature vector (torso angle, torso ratio,
+       bbox ratio, mean keypoint y-offset).
+    4. Scale features with the fitted scaler.
+    5. Classify with the SVM → ``'fallen'`` or ``'not-fallen'``.
+
+    Args:
+        svm_path: Path to a pickled scikit-learn SVM model.
+        pose_model_path: Path to the YOLOv11-pose ``.pt`` checkpoint.
+        scaler_path: Path to the pickled ``StandardScaler``.
+        pose_conf: Keypoint confidence threshold for pose inference.
     """
-    def __init__(self, svm_path):
-        """Initialize the detector.
+
+    def __init__(
+        self,
+        svm_path: str | Path,
+        pose_model_path: str | Path = _DEFAULT_POSE_MODEL,
+        scaler_path: str | Path = _DEFAULT_SCALER,
+        pose_conf: float = 0.9,
+    ) -> None:
+        svm_path       = Path(svm_path)
+        pose_model_path = Path(pose_model_path)
+        scaler_path    = Path(scaler_path)
+
+        for p in (svm_path, pose_model_path, scaler_path):
+            if not p.exists():
+                raise FileNotFoundError(f"Required file not found: {p}")
+
+        self.pose_conf = pose_conf
+        self._pose_model = YOLO(str(pose_model_path))
+
+        with scaler_path.open("rb") as f:
+            self._scaler = pickle.load(f)
+        with svm_path.open("rb") as f:
+            self._svm = pickle.load(f)
+
+        logger.info("FallDetect loaded (pose=%s, svm=%s).", pose_model_path, svm_path)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def detect(self, image) -> list[FallResult]:
+        """Detect fall events for every person visible in *image*.
 
         Args:
-            svm_path: Path to a pickled scikit-learn SVM/SVC model.
-        """
-        self.model = YOLO('yolo11m-pose.pt')
-        self.scaler = pickle.load(open('./models/fallDetectScaler.pkl', 'rb'))
-        self.svm = pickle.load(open(svm_path, 'rb'))
-
-    def __nose_ref_point(self, point, nose):
-        """Convert a keypoint to a coordinate system relative to the nose.
-
-        Args:
-            point: A 2D point (x, y) in image coordinates.
-            nose: The nose keypoint (x, y) used as the origin.
+            image: A NumPy BGR array or any source accepted by
+                ``YOLO.predict`` (file path, PIL Image, etc.).
 
         Returns:
-            tuple[float, float]: The translated point (x - nose_x, y - nose_y).
+            One :class:`FallResult` per detected person.
+            Returns an empty list if no persons are found.
         """
-        new_point = (float(point[0] - nose[0]), float(point[1] - nose[1]))
-        return tuple(new_point)
-    
-    def __get_points(self, image_path, conf=0.8):
-        """Extract pose keypoints and bounding boxes from an image.
+        keypoints_batch, bboxes = self._extract_keypoints(image)
+        results: list[FallResult] = []
 
-        Args:
-            image_path: Path to an image (or a source supported by
-                Ultralytics' `YOLO.predict`).
-            conf: Confidence threshold forwarded to the YOLO predictor.
+        for keypoints, bbox in zip(keypoints_batch, bboxes):
+            features = self._build_features(keypoints, bbox)
+            if features is None:
+                logger.debug("Skipping person – insufficient keypoint data.")
+                continue
 
-        Returns:
-            tuple[np.ndarray, np.ndarray | list]:
-            - keypoints: Array of detected person keypoints.
-            - bboxes: Array of bounding boxes in xyxy format (int), or an empty
-              list if no detections.
-        """
-        results = self.model.predict(image_path, conf=conf, imgsz=640, verbose=False)
+            scaled = self._scaler.transform(features)
+            prediction = self._svm.predict(scaled)[0]
+            label = "fallen" if prediction == 1 else "not-fallen"
+            results.append(FallResult(label=label, bbox=bbox.tolist(), confidence=1.0))
+            logger.debug("Person bbox=%s → %s.", bbox.tolist(), label)
+
+        return results
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _extract_keypoints(
+        self, image
+    ) -> tuple[np.ndarray, np.ndarray | list]:
+        """Run YOLOv11-pose inference and return raw keypoints + boxes."""
+        results = self._pose_model.predict(
+            image,
+            conf=self.pose_conf,
+            imgsz=640,
+            verbose=False,
+        )
         keypoints = results[0].keypoints.xy.cpu().numpy()
-        if len(keypoints) > 0:
-            bboxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
-        else:
-            bboxes = []
-
+        bboxes    = (
+            results[0].boxes.xyxy.cpu().numpy().astype(int)
+            if len(keypoints) > 0
+            else []
+        )
         return keypoints, bboxes
 
-    def __body_orient(self, ls, rs, lh, rh):
-        """Compute torso orientation features.
+    @staticmethod
+    def _nose_relative(point: np.ndarray, nose: np.ndarray) -> np.ndarray:
+        """Translate *point* to a coordinate system centred on *nose*."""
+        return point - nose
 
-        Uses the center point between left/right shoulders and left/right hips
-        to compute an angle in degrees, plus a simple height/width ratio.
+    def _build_features(
+        self,
+        keypoints: np.ndarray,
+        bbox: np.ndarray,
+    ) -> np.ndarray | None:
+        """Construct the 4-D feature vector for one detected person.
 
-        Args:
-            ls: Left shoulder point (x, y) in nose-relative coordinates.
-            rs: Right shoulder point (x, y) in nose-relative coordinates.
-            lh: Left hip point (x, y) in nose-relative coordinates.
-            rh: Right hip point (x, y) in nose-relative coordinates.
-
-        Returns:
-            tuple[float, float]: (angle_degrees, height_width_ratio)
+        Returns ``None`` if the keypoints array is too small to index.
         """
+        if len(keypoints) <= _KP_RIGHT_HIP:
+            return None
+
+        nose = keypoints[0]
+        kp_rel = np.array(
+            [self._nose_relative(kp, nose) for kp in keypoints]
+        )  # shape: (17, 2)
+
+        ls = kp_rel[_KP_LEFT_SHOULDER]
+        rs = kp_rel[_KP_RIGHT_SHOULDER]
+        lh = kp_rel[_KP_LEFT_HIP]
+        rh = kp_rel[_KP_RIGHT_HIP]
+
+        angle, torso_ratio = self._torso_orientation(ls, rs, lh, rh)
+        bbox_ratio         = self._bbox_ratio(bbox[:2], bbox[2:])
+        mean_y             = float(kp_rel[:, 1].mean())
+
+        return np.array([angle, torso_ratio, bbox_ratio, mean_y]).reshape(1, -1)
+
+    @staticmethod
+    def _torso_orientation(
+        ls: np.ndarray,
+        rs: np.ndarray,
+        lh: np.ndarray,
+        rh: np.ndarray,
+    ) -> tuple[float, float]:
+        """Compute torso angle (degrees) and shoulder-to-hip aspect ratio."""
         shoulder_center = (ls + rs) / 2
-        hip_center = (lh + rh) / 2
+        hip_center      = (lh + rh) / 2
         dx = hip_center[0] - shoulder_center[0]
         dy = hip_center[1] - shoulder_center[1]
-        angles = np.degrees(np.arctan2(dy, dx))
+        angle  = float(np.degrees(np.arctan2(dy, dx)))
+        width  = abs(float(ls[0] - rh[0]))
+        height = abs(float(ls[1] - rh[1]))
+        ratio  = height / (width + 1e-6)
+        return angle, ratio
 
-        width = np.abs(ls[0] - rh[0])
-        height = np.abs(ls[1] - rh[1])
-        ratio = height / (width + 1e-6)
-
-        return angles, ratio
-    
-    def __bounding_box_ratio(self, p1, p2):
-        """Compute bounding-box height/width ratio.
-
-        Args:
-            p1: Top-left corner (x1, y1).
-            p2: Bottom-right corner (x2, y2).
-
-        Returns:
-            float: height / (width + 1e-6)
-        """
-        [x1, y1], [x2, y2] = p1, p2
-
-        width = np.abs(x1 - x2)
-        height = np.abs(y1 - y2)
-        ratio = height / (width + 1e-6)
-        return ratio
-
-    def detect_fall(self, image):
-        """Detect whether each detected person in an image is fallen.
-
-        For each detected person, this method builds a feature vector from:
-        - Torso angle + torso height/width ratio
-        - Bounding-box height/width ratio
-        - Mean of all keypoint y-values (nose-relative)
-
-        Args:
-            image: Path to an image (or a source supported by
-                Ultralytics' `YOLO.predict`).
-
-        Returns:
-            list[tuple(str, bbox)]: One label per detected person, each either `'fallen'` or
-            `'not-fallen'` and bounding box according to the image.
-        """
-        keypoints, bboxes = self.__get_points(image)
-
-        inference = []
-        for points, bbox in zip(keypoints, bboxes):
-            nose = points[0]
-            new_point = list(map(lambda p: self.__nose_ref_point(p, nose), points))
-            
-            # Extract the features point
-            left_shoulder = np.asarray(new_point[5])
-            right_shoulder = np.asarray(new_point[6])
-            left_hip = np.asarray(new_point[11])
-            right_hip = np.asarray(new_point[12])
-            bbox_p1 = np.asarray(bbox[:2])
-            bbox_p2 = np.asarray(bbox[2:])
-
-            all_y = []
-            for ele in new_point:
-                all_y.append(ele[1])
-            mean = np.mean(all_y) # Calculate mean of all points
-
-            angle_body = np.array(self.__body_orient(left_shoulder, right_shoulder, left_hip, right_hip))
-            bbox_ratio = self.__bounding_box_ratio(bbox_p1, bbox_p2)
-            features = np.append(angle_body, [bbox_ratio, mean]).reshape(1, -1) # Resize with 2D array
-            
-            scaled_features = self.scaler.transform(features)
-            prediction = self.svm.predict(scaled_features) # Predict using SVC
-            
-            if prediction[0] == 0:
-                inference.append(('not-fallen', bbox))
-            else:
-                inference.append(('fallen', bbox))
-        return inference
+    @staticmethod
+    def _bbox_ratio(p1: np.ndarray, p2: np.ndarray) -> float:
+        """Return the height-to-width ratio of a bounding box."""
+        width  = abs(float(p1[0] - p2[0]))
+        height = abs(float(p1[1] - p2[1]))
+        return height / (width + 1e-6)

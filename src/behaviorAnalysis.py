@@ -1,53 +1,95 @@
+"""Behavioral analysis module using YOLOv12 for cry/fight detection."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import NamedTuple
+
 from ultralytics import YOLO
 
-class BehaviorAnalysisModel:
-    def __init__(self, model_path, conf=.6):
-        """Wrap an Ultralytics YOLO model for behavior detection.
+from utilities.logger import get_logger
 
-        Args:
-            model_path (str | os.PathLike[str]):
-                Path to a YOLO model file (e.g., ``.pt``) compatible with the
-                Ultralytics :class:`ultralytics.YOLO` API.
-            conf (float):
-                Minimum confidence threshold applied during prediction.
-        """
-        self.model_path = model_path
-        self.model = YOLO(self.model_path)
+logger = get_logger(__name__)
+
+
+class BehaviorResult(NamedTuple):
+    """Structured result for a single behavioral detection."""
+    label: str           # class name (e.g. 'cry', 'fight')
+    confidence: float
+    bbox: list[float]    # [x1, y1, x2, y2]
+
+
+class BehaviorAnalysisModel:
+    """YOLOv12-based behavior detector for cry and fight events.
+
+    Args:
+        model_path: Path to the ``.pt`` checkpoint.
+        conf: Minimum detection confidence threshold (0–1).
+    """
+
+    def __init__(
+        self,
+        model_path: str | Path,
+        conf: float = 0.9,
+    ) -> None:
+        self.model_path = Path(model_path)
         self.conf = conf
 
-    def detect_behavior(self, image):
-        """Run YOLO inference and return detections.
+        if not self.model_path.exists():
+            raise FileNotFoundError(
+                f"Behavior model checkpoint not found: {self.model_path}"
+            )
+
+        self.model = YOLO(str(self.model_path))
+        logger.info("BehaviorAnalysisModel loaded from '%s'.", self.model_path)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def detect(self, image) -> list[BehaviorResult]:
+        """Run inference and return detected behavioral events.
 
         Args:
-            image (str | os.PathLike[str] | numpy.ndarray | PIL.Image.Image):
-                Image input accepted by Ultralytics YOLO (e.g., a NumPy array in
-                HWC/BGR or HWC/RGB format, a file path, or a PIL Image).
+            image: A NumPy BGR array or any source accepted by
+                ``YOLO.predict`` (file path, PIL Image, etc.).
 
         Returns:
-            list[list[object]]:
-                A list of detections of the form ``[class_id, confidence, [x1, y1, x2, y2]]``.
+            One :class:`BehaviorResult` per detection, ordered by
+            descending confidence.  Returns an empty list when nothing
+            is detected above the confidence threshold.
         """
         results = self.model.predict(
             image,
             save=False,
-            conf=self.conf
+            conf=self.conf,
+            verbose=False,
         )[0]
 
         boxes = results.boxes.cpu()
-        detections = []
-        cls = boxes.cls.numpy()
-        confs = boxes.conf.numpy()
-        xyxys = boxes.xyxy.numpy()
+        names = self.model.names
 
-        for cl, conf, xyxy in zip(cls, confs, xyxys):
-            detections.append(list([int(cl), float(conf), xyxy.tolist()]))
+        detections: list[BehaviorResult] = []
+        for cl, conf, xyxy in zip(
+            boxes.cls.numpy(),
+            boxes.conf.numpy(),
+            boxes.xyxy.numpy(),
+        ):
+            detections.append(
+                BehaviorResult(
+                    label=names[int(cl)],
+                    confidence=float(conf),
+                    bbox=xyxy.tolist(),
+                )
+            )
 
+        logger.debug("Detected %d behavior event(s).", len(detections))
         return detections
 
-    def get_names(self):
-        """Return the model's class-name labels.
+    def get_class_names(self) -> list[str]:
+        """Return all class-name labels from the loaded model.
 
         Returns:
-            list[str]: Class names indexed by class id (i.e., ``names[class_id]``).
+            List of class names ordered by class index.
         """
         return list(self.model.names.values())
