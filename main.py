@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 def main() -> None:
     child_model_path    = Path("models/childModel.pt")
     fall_detect_path    = Path("models/fallDetect.pkl")
-    behavior_model_path = Path("models/behavioralModel.pt")
+    behavior_model_path = Path("models/behavioralModelv2.pt")
     video_path          = Path("data/input_2.mp4")   # set to None for live camera
     output_path         = Path("outputs/output_2.mp4")  # set to None to skip saving
 

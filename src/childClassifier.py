@@ -30,7 +30,7 @@ class ChildModel:
     def __init__(
         self,
         model_path: str | Path,
-        conf: float = 0.6,
+        conf: float = 0.8,
         tracker: str = "botsort.yaml",
     ) -> None:
         self.model_path = Path(model_path)

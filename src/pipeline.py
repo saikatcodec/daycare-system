@@ -215,7 +215,7 @@ class SystemPipeline:
         # Translate crop-space boxes → full-frame before drawing.
         for track_id, _conf, origin_x, origin_y, fall_future in fall_jobs:
             for fall in fall_future.result():
-                if fall.label == "fallen":
+                if "not-fallen" not in fall.label.lower():
                     frame_bbox = _to_frame_coords(fall.bbox, origin_x, origin_y)
                     frame = Utils.draw_bounding_box(
                         frame,
