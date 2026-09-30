@@ -287,6 +287,3 @@ This repository does not currently declare a license in the project metadata. If
 
 Project repository: `saikatcodec/daycare-system`
 
----
-
-If you want, I can also create a more polished version of this README tailored for GitHub, including badges, a project architecture diagram, and a demo screenshot section.
