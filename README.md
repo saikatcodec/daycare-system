@@ -207,7 +207,7 @@ This system is suitable for:
 
 This project is distributed under a custom restricted-use license. The source code may be viewed within this repository for educational and informational purposes only. Copying, distributing, modifying, running, or using the code, in whole or in part, is not permitted without explicit permission.
 
-See the [LICENSE](LICENSE) file for the complete terms and conditions.
+See the [LICENSE](LICENSE.md) file for the complete terms and conditions.
 
 ## Author
 
