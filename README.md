@@ -205,7 +205,15 @@ This system is suitable for:
 
 ## License
 
-This project is distributed under a custom restricted-use license. The source code may be viewed within this repository for educational and informational purposes only. Copying, distributing, modifying, running, or using the code, in whole or in part, is not permitted without explicit permission.
+This project is licensed under the Prosperity Public License 3.0.0.
+
+The source code is publicly available for academic, educational, and
+non-commercial research purposes. Commercial use is subject to the
+terms and limitations of the Prosperity Public License, including its
+commercial trial period.
+
+For commercial use beyond the permitted trial period, please contact
+the copyright holder for licensing options.
 
 See the [LICENSE](LICENSE.md) file for the complete terms and conditions.
 
